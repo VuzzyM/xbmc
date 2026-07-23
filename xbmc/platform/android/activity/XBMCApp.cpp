@@ -11,6 +11,7 @@
 #include "AndroidKey.h"
 #include "CompileInfo.h"
 #include "FileItem.h"
+#include "FileItemList.h"
 // Audio Engine includes for Factory and interfaces
 #include "GUIInfoManager.h"
 #include "ServiceBroker.h"
@@ -1404,7 +1405,25 @@ void CXBMCApp::onNewIntent(CJNIIntent intent)
         *(item->GetVideoInfoTag()) = XFILE::CVideoDatabaseFile::GetVideoTag(item->GetURL());
         item->SetPath(item->GetVideoInfoTag()->m_strFileNameAndPath);
       }
-      CServiceBroker::GetAppMessenger()->PostMsg(TMSG_MEDIA_PLAY, 0, 0, static_cast<void*>(item));
+
+      if (URIUtils::HasExtension(targeturl, ".m3u"))
+      {
+        item->SetMimeType("audio/x-mpegurl");
+
+        CFileItemList* list = new CFileItemList();
+        list->Add(std::make_shared<CFileItem>(*item));
+
+        delete item;
+
+        CServiceBroker::GetAppMessenger()->PostMsg(TMSG_MEDIA_PLAY,
+                                                   static_cast<int>(KODI::PLAYLIST::Id::TYPE_VIDEO),
+                                                   1,
+                                                   static_cast<void*>(list));
+      }
+      else
+      {
+        CServiceBroker::GetAppMessenger()->PostMsg(TMSG_MEDIA_PLAY, 0, 0, static_cast<void*>(item));
+      }
     }
   }
   else if (action == ACTION_XBMC_RESUME)
