@@ -205,44 +205,26 @@ DemuxPacket* CDemuxMultiSource::Read()
 
 bool CDemuxMultiSource::SeekTime(double time, bool backwards, double* startpts)
 {
-  DemuxQueue demuxerQueue;
+  DemuxQueue demuxerQueue = DemuxQueue();
   bool ret = false;
-
   for (auto& iter : m_demuxerMap)
   {
     const int64_t demuxerId = iter.first;
-    const DemuxPtr& demuxer = iter.second;
-
-    // Seek only the master video demuxer and the currently
-    // selected external audio demuxer.
     if (demuxerId != m_masterDemuxerId &&
         demuxerId != m_activeDemuxerId)
       continue;
-
-    double demuxerStartPts = DVD_NOPTS_VALUE;
-
-    if (demuxer->SeekTime(time, backwards, &demuxerStartPts))
+    if (iter.second->SeekTime(time, false, startpts))
     {
-      if (demuxerStartPts != DVD_NOPTS_VALUE)
-        demuxerQueue.emplace(demuxerStartPts, demuxer);
-      else
-        demuxerQueue.emplace(time * DVD_TIME_BASE, demuxer);
-      if (startpts && *startpts == DVD_NOPTS_VALUE &&
-          demuxerStartPts != DVD_NOPTS_VALUE)
-      {
-        *startpts = demuxerStartPts;
-      }
-      CLog::Log(LOGDEBUG, "{} - seek demuxer {} to {:f}",
-                __FUNCTION__, demuxer->GetFileName(), time);
+      demuxerQueue.emplace(*startpts, iter.second);
+      CLog::Log(LOGDEBUG, "{} - starting demuxer from: {:f}", __FUNCTION__, time);
       ret = true;
     }
     else
     {
-      CLog::Log(LOGDEBUG, "{} - failed to seek demuxer {} to {:f}",
-                __FUNCTION__, demuxer->GetFileName(), time);
+      CLog::Log(LOGDEBUG, "{} - failed to start demuxing from: {:f}", __FUNCTION__, time);
     }
   }
-  m_demuxerQueue = std::move(demuxerQueue);
+  m_demuxerQueue = demuxerQueue;
   return ret;
 }
 
