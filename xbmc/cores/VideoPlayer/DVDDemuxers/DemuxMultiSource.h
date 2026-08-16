@@ -61,4 +61,7 @@ private:
   std::map<DemuxPtr, InputStreamPtr> m_DemuxerToInputStreamMap;
   DemuxQueue m_demuxerQueue;
   std::map<int64_t, DemuxPtr> m_demuxerMap;
+
+  int64_t m_masterDemuxerId{-1};
+  int64_t m_activeDemuxerId{-1};
 };
