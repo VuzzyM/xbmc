@@ -213,6 +213,7 @@ bool CDemuxMultiSource::SeekTime(double time, bool backwards, double* startpts)
     if (demuxerId != m_masterDemuxerId &&
         demuxerId != m_activeDemuxerId)
       continue;
+
     if (iter.second->SeekTime(time, false, startpts))
     {
       demuxerQueue.emplace(*startpts, iter.second);
