@@ -33,21 +33,39 @@
 #include "utils/FileUtils.h"
 #include "utils/URIUtils.h"
 #include "video/VideoFileItemClassify.h"
+#include "music/MusicFileItemClassify.h"
 
 #include <memory>
 
 using namespace KODI;
 
-std::shared_ptr<CDVDInputStream> CDVDFactoryInputStream::CreateInputStream(IVideoPlayer* pPlayer, const CFileItem &fileitem, bool scanforextaudio)
+std::shared_ptr<CDVDInputStream> CDVDFactoryInputStream::CreateInputStream(IVideoPlayer* pPlayer, const CFileItem& fileitem, bool scanforextaudio)
 {
   using namespace ADDON;
-
   const std::string& file = fileitem.GetDynPath();
   if (scanforextaudio)
   {
-    // find any available external audio tracks
     std::vector<std::string> filenames;
     filenames.push_back(file);
+    const std::string inputSlave =
+        fileitem.GetProperty("input-slave").asString();
+    if (!inputSlave.empty())
+    {
+      const std::vector<std::string> slaves =
+          StringUtils::Split(inputSlave, "#");
+      for (const std::string& slave : slaves)
+      {
+        CFileItem slaveItem(slave, false);
+
+        if (MUSIC::IsAudio(slaveItem))
+          filenames.push_back(slave);
+      }
+    }
+    if (filenames.size() >= 2)
+    {
+      return CreateInputStream(pPlayer, fileitem, filenames);
+    }
+    // find any available external audio tracks
     CUtil::ScanForExternalAudio(file, filenames);
     if (filenames.size() >= 2)
     {
