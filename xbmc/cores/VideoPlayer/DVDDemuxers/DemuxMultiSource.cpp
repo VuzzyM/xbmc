@@ -139,6 +139,8 @@ bool CDemuxMultiSource::Open(const std::shared_ptr<CDVDInputStream>& pInput)
       m_demuxerMap[demuxer->GetDemuxerId()] = demuxer;
       m_DemuxerToInputStreamMap[demuxer] = *iter;
       m_demuxerQueue.emplace(-1.0, demuxer);
+      if (m_masterDemuxerId == -1)
+        m_masterDemuxerId = demuxer->GetDemuxerId();
       ++iter;
     }
   }
