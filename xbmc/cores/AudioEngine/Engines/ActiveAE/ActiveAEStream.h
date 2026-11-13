@@ -258,6 +258,8 @@ protected:
   CAESyncInfo::AESyncState m_syncState;
   // Whether late audio was left to the player's clock and no error was averaged since
   bool m_lateStartHandedOver{false};
+  // Sink holds the audio it had at pause frozen, see CActiveAE::SinkPause()
+  bool m_sinkFrozen{false};
 };
 }
 

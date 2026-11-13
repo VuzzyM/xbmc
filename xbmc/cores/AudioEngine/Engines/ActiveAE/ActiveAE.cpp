@@ -760,6 +760,11 @@ void CActiveAE::StateMachine(int signal, Protocol *port, Message *msg)
           if (!stream->m_paused && m_streams.size() == 1)
           {
             FlushEngine();
+            // Keep the audio the device already holds instead of letting it play out or
+            // discarding it. Only while in sync: after a start or seek the device content does
+            // not continue the position the clock is at.
+            stream->m_sinkFrozen =
+                stream->m_syncState == CAESyncInfo::AESyncState::SYNC_INSYNC && SinkPause(true);
             streaming = false;
             m_sink.m_controlPort.SendOutMessage(CSinkControlProtocol::STREAMING, &streaming, sizeof(bool));
           }
@@ -768,7 +773,7 @@ void CActiveAE::StateMachine(int signal, Protocol *port, Message *msg)
         case CActiveAEControlProtocol::RESUMESTREAM:
           stream = *(CActiveAEStream**)msg->data;
           if (stream->m_paused)
-            stream->m_syncState = CAESyncInfo::AESyncState::SYNC_START;
+            SResumeStream(stream);
           stream->m_paused = false;
           streaming = true;
           m_sink.m_controlPort.SendOutMessage(CSinkControlProtocol::STREAMING, &streaming, sizeof(bool));
@@ -1025,8 +1030,8 @@ void CActiveAE::StateMachine(int signal, Protocol *port, Message *msg)
         case CActiveAEControlProtocol::RESUMESTREAM:
           CActiveAEStream *stream;
           stream = *(CActiveAEStream**)msg->data;
+          SResumeStream(stream);
           stream->m_paused = false;
-          stream->m_syncState = CAESyncInfo::AESyncState::SYNC_START;
           m_state = AE_TOP_CONFIGURED_PLAY;
           m_extTimeout = 0ms;
           return;
@@ -1642,6 +1647,7 @@ void CActiveAE::SFlushStream(CActiveAEStream *stream)
   stream->m_streamPort->Purge();
   stream->m_bufferedTime = 0.0;
   stream->m_paused = false;
+  stream->m_sinkFrozen = false; // the sink drops it in Flush()
   stream->m_syncState = CAESyncInfo::AESyncState::SYNC_START;
   stream->m_syncError.Flush();
   stream->ResetFreeBuffers();
@@ -1666,6 +1672,50 @@ void CActiveAE::SFlushStream(CActiveAEStream *stream)
   }
 
   m_stats.UpdateStream(stream);
+}
+
+// Freeze/release the audio the sink holds. true: the sink keeps it and continues it on release.
+bool CActiveAE::SinkPause(bool pause)
+{
+#if !defined(TARGET_ANDROID)
+  // Only the Android RAW AudioTrack sink freezes its audio. Nothing is sent elsewhere.
+  return false;
+#else
+  // PCM never freezes: keeps the existing pause behavior
+  if (m_mode == MODE_PCM)
+    return false;
+
+  Message* reply;
+  if (!m_sink.m_controlPort.SendOutMessageSync(CSinkControlProtocol::PAUSE, &reply, 2s, &pause,
+                                               sizeof(pause)))
+  {
+    CLog::Log(LOGERROR, "ActiveAE::{} - failed to {} sink", __FUNCTION__,
+              pause ? "pause" : "resume");
+    return false;
+  }
+  const bool kept = reply->signal == CSinkControlProtocol::ACC;
+  reply->Release();
+  return kept;
+#endif
+}
+
+void CActiveAE::SResumeStream(CActiveAEStream* stream)
+{
+  const bool wasFrozen = stream->m_sinkFrozen;
+  stream->m_sinkFrozen = false;
+
+  if (wasFrozen && SinkPause(false))
+  {
+    // The device continues exactly where it was paused: stay in sync instead of a restart
+    // which would mute (RAW) the first audio after resume. A real offset is still
+    // corrected by the regular sync once it is averaged.
+    stream->m_syncError.Flush(1000ms);
+    stream->m_lateStartHandedOver = false;
+    CLog::Log(LOGDEBUG, "ActiveAE::{} - resumed audio held by the sink", __FUNCTION__);
+    return;
+  }
+
+  stream->m_syncState = CAESyncInfo::AESyncState::SYNC_START;
 }
 
 void CActiveAE::FlushEngine(bool discardOutput)

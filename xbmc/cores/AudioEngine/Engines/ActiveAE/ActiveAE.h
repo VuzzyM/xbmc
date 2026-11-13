@@ -331,6 +331,8 @@ protected:
   void DiscardStream(CActiveAEStream *stream);
   void SFlushStream(CActiveAEStream *stream);
   void FlushEngine(bool discardOutput = false);
+  bool SinkPause(bool pause);
+  void SResumeStream(CActiveAEStream* stream);
   void ClearDiscardedBuffers();
   void SStopSound(CActiveAESound *sound);
   void DiscardSound(CActiveAESound *sound);

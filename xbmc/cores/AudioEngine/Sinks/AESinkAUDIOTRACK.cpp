@@ -624,6 +624,7 @@ void CAESinkAUDIOTRACK::Deinitialize()
   delete m_at_jni;
   m_at_jni = NULL;
   m_rawNeedsFlush = false;
+  m_frozen = false;
   m_delay = 0.0;
   m_hw_delay = 0.0;
   m_pause_ms = 0.0;
@@ -926,7 +927,8 @@ unsigned int CAESinkAUDIOTRACK::AddPackets(uint8_t **data, unsigned int frames, 
     if (m_startPending && m_startWriteCounter == 0)
       m_startWriteCounter = CurrentHostCounter();
 
-    if (m_at_jni->getPlayState() != CJNIAudioTrack::PLAYSTATE_PLAYING)
+    // A frozen track is only restarted by Pause(false)
+    if (!m_frozen && m_at_jni->getPlayState() != CJNIAudioTrack::PLAYSTATE_PLAYING)
       m_at_jni->play();
 
     bool retried = false;
@@ -1059,6 +1061,14 @@ void CAESinkAUDIOTRACK::AddPause(unsigned int millis)
   if (!m_at_jni)
     return;
 
+  // Frozen: the track already holds its audio, a faked pause burst would only
+  // add delay which Pause(false) does not know about. Just pace the caller.
+  if (m_frozen)
+  {
+    usleep(millis * 1000);
+    return;
+  }
+
   // RAW has no actual pause packet to write. On an empty track, booking a
   // pause as queued audio would report delay for audio which does not exist.
   const double queued = m_duration_written - static_cast<double>(m_headPos) / m_sink_sampleRate;
@@ -1110,6 +1120,7 @@ void CAESinkAUDIOTRACK::Flush()
     m_at_jni->flush();
     m_rawNeedsFlush = false;
   }
+  m_frozen = false;
   // A post-flush timestamp must belong to the new playback-head epoch.
   // Do not let the cached pre-flush timestamp influence the next stream.
   m_flushTime = CurrentHostCounter();
@@ -1129,9 +1140,51 @@ void CAESinkAUDIOTRACK::Flush()
   m_startWriteCounter = 0;
 }
 
+// Real pause for RAW Android Audiotrack: keep what the track already
+// holds and continue it on resume, nothing is discarded or re-synced.
+// Flush() stays the explicit "discard" for seeks.
+bool CAESinkAUDIOTRACK::Pause(bool pause)
+{
+  if (!IsInitialized() || !m_passthrough || m_info.m_wantsIECPassthrough)
+    return false;
+
+  if (pause)
+  {
+    // Nothing queued (start, after flush): nothing to keep
+    const double queued = m_duration_written - static_cast<double>(m_headPos) / m_sink_sampleRate;
+    if (queued <= 0.0)
+      return false;
+
+    m_frozen = true;
+    if (m_at_jni->getPlayState() == CJNIAudioTrack::PLAYSTATE_PLAYING)
+      m_at_jni->pause();
+    CLog::Log(LOGDEBUG, "CAESinkAUDIOTRACK::Pause - froze {:.0f} ms of queued RAW audio",
+              queued * 1000);
+    return true;
+  }
+
+  if (!m_frozen)
+    return false;
+
+  m_frozen = false;
+  // getTimestamp() is extrapolated with the wall clock, which kept running while paused
+  m_timestampPos = 0;
+  m_timestampValid = false;
+  m_flushTime = CurrentHostCounter();
+  m_stampTimer.SetExpired();
+  m_linearmovingaverage.clear();
+  if (m_at_jni->getPlayState() == CJNIAudioTrack::PLAYSTATE_PAUSED)
+    m_at_jni->play();
+  return true;
+}
+
 void CAESinkAUDIOTRACK::Drain()
 {
   if (!m_at_jni)
+    return;
+
+  // stop() would play out what the frozen track keeps
+  if (m_frozen)
     return;
 
   CLog::Log(LOGDEBUG, "Draining Audio");

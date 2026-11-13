@@ -309,6 +309,15 @@ void CActiveAESink::StateMachine(int signal, Protocol *port, Message *msg)
           msg->Reply(CSinkControlProtocol::ACC);
           return;
 
+        case CSinkControlProtocol::PAUSE:
+        {
+          // ACC: the sink holds its queued audio frozen (pause) or released it (resume)
+          const bool pause = *reinterpret_cast<const bool*>(msg->data);
+          const bool kept = m_sink && m_sink->Pause(pause);
+          msg->Reply(kept ? CSinkControlProtocol::ACC : CSinkControlProtocol::ERR);
+          return;
+        }
+
         case CSinkControlProtocol::APPFOCUSED:
           m_extAppFocused = *(bool*)msg->data;
           SetSilenceTimer();

@@ -63,6 +63,7 @@ public:
     TIMEOUT,
     SETSILENCETIMEOUT,
     SETNOISETYPE,
+    PAUSE,
   };
   enum InSignal
   {

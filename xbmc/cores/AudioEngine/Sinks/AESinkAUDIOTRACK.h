@@ -39,6 +39,7 @@ public:
   void AddPause(unsigned int millis) override;
   void Drain() override;
   void Flush() override;
+  bool Pause(bool pause) override;
   static void          EnumerateDevicesEx(AEDeviceInfoList &list, bool force = false);
   static void Register();
   static std::unique_ptr<IAESink> Create(std::string& device, AEAudioFormat& desiredFormat);
@@ -68,6 +69,8 @@ private:
   uint64_t m_timestampPos = 0;
   int64_t m_flushTime = 0;
   bool m_rawNeedsFlush = false;
+  // RAW: track is paused with its queued audio kept, see Pause()
+  bool m_frozen = false;
   bool m_timestampValid = false;
   // Moving Average computes the weighted average delay over
   // a fixed size of delay values - current size: 20 values

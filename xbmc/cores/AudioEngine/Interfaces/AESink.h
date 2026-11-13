@@ -80,6 +80,15 @@ public:
   virtual void Flush() {}
 
   /*
+    Freeze (true) or release (false) the device output like a real pause:
+    audio already queued in the device is kept and continues on release,
+    nothing is discarded. Called by the sink thread.
+    Returns true if the sink froze/released queued audio, false if it has
+    nothing to keep or does not support it (default).
+   */
+  virtual bool Pause(bool pause) { return false; }
+
+  /*
     Indicates if sink can handle volume control.
   */
   virtual bool HasVolume() { return false; }
